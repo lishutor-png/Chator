@@ -12,6 +12,10 @@ jobs:
     name: Build APK
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -23,22 +27,67 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Android SDK & Accept Licenses
+        run: |
+          echo "Setting up Android SDK environment on GitHub runner..."
+          # Fix ownership in case runner user doesn't own the pre-installed SDK directory
+          sudo chown -R $USER:$USER "$ANDROID_HOME" 2>/dev/null || true
+          
+          # Create licenses directory
+          mkdir -p "$ANDROID_HOME/licenses"
+
+          # Write all official Android SDK license hashes directly
+          cat << 'EOF' > "$ANDROID_HOME/licenses/android-sdk-license"
+8933bad161af4178b1185d1a37fbf41ea5269c55
+d56f5187479451eabf01fb78af6dfcb131a6481e
+24333f8a63b682449e7279dd455c6dd15fed45f1
+EOF
+
+          cat << 'EOF' > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+84831b9409646a918e30573bab4c9c91346d8abd
+EOF
+
+          cat << 'EOF' > "$ANDROID_HOME/licenses/android-googletv-license"
+601085b94cd77f6b54ee86482f80c0dd826e38a4
+EOF
+
+          cat << 'EOF' > "$ANDROID_HOME/licenses/google-gdk-license"
+33b6a2b649117730529320b3a368717c61b53335
+EOF
+
+          cat << 'EOF' > "$ANDROID_HOME/licenses/mips-android-sysimage-license"
+e9acab5b5fbb560a72cfa4e27c30d7500488c54d
+EOF
+
+          # Find and invoke sdkmanager if available to accept any remaining licenses
+          SDKMANAGER=$(which sdkmanager 2>/dev/null || find "$ANDROID_HOME" -name sdkmanager -type f 2>/dev/null | head -n 1)
+          if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
+            echo "Found sdkmanager at: $SDKMANAGER"
+            yes | "$SDKMANAGER" --licenses 2>/dev/null || true
+          fi
+          echo "Android SDK setup successfully configured."
 
       - name: Prepare Build Environment
         run: |
           # Ensure .env exists for Secrets Gradle plugin
-          cp .env.example .env 2>/dev/null || touch .env
-          # Decode debug keystore if base64 file exists
+          if [ -f .env.example ]; then
+            cp .env.example .env
+          else
+            touch .env
+          fi
+          
+          # Decode debug keystore if base64 file exists, or generate fresh debug keystore
           if [ -f debug.keystore.base64 ]; then
             base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || true
+          elif [ ! -f debug.keystore ]; then
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" 2>/dev/null || true
           fi
+          
           # Ensure gradlew has executable permissions
           chmod +x gradlew || true
 
       - name: Build Debug APK with Gradle
-        run: ./gradlew assembleDebug --stacktrace --no-daemon
+        run: ./gradlew assembleDebug --stacktrace --no-daemon -Pandroid.builder.sdkDownload=true
 
       - name: Verify APK Generated
         run: |
