@@ -1,0 +1,6 @@
+{
+  "name": "Chator",
+  "description": "Game catur offline lengkap dengan AI cerdas berbagai tingkat kesulitan, mode dua pemain satu layar, teka-teki taktik catur, dan tema visual elegan.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
